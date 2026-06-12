@@ -10,6 +10,5 @@ urlpatterns = [
     path("register-token/", views.register_token, name="register_token"),
     path("alerts/unresolved/", views.unresolved_alerts, name="unresolved_alerts"),
     path("alerts/<int:alert_id>/resolve/", views.resolve_alert, name="resolve_alert"),
-    path("api/resolve/", views.api_resolve_alert, name="api_resolve_alert"),
     path("report/", views.report, name="report"),
 ]

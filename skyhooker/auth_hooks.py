@@ -34,9 +34,4 @@ def register_menu():
 
 @hooks.register("url_hook")
 def register_urls():
-    return UrlHook(
-        urls,
-        "skyhooker",
-        r"^skyhooker/",
-        excluded_views=["skyhooker.views.api_resolve_alert"],
-    )
+    return UrlHook(urls, "skyhooker", r"^skyhooker/")

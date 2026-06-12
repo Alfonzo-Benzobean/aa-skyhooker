@@ -57,7 +57,6 @@ def dashboard(request):
     recent_alerts = AlertLog.objects.select_related("skyhook").order_by("-fired_at")[:20]
     corps = SkyhookCorporation.objects.filter(is_active=True)
 
-    # Find which corps have a valid token registered
     for corp in corps:
         corp.has_token = Token.objects.filter(
             character_id=corp.token_character_id
@@ -97,12 +96,7 @@ def register_token(request, token):
     """
     ESI token registration view.
     Uses django-esi's @token_required decorator to handle the SSO flow.
-    The decorator redirects to EVE SSO, gets the token, then calls this
-    view with the token as an argument.
-
-    The Director selects which corporation to associate the token with.
     """
-    # token is injected by @token_required after SSO completes
     corp_id = request.GET.get("corp_id")
 
     if corp_id:
@@ -117,7 +111,6 @@ def register_token(request, token):
         )
         return redirect("skyhooker:dashboard")
 
-    # No corp_id — show selection form
     corps = SkyhookCorporation.objects.filter(is_active=True)
     context = {
         "token": token,
@@ -161,91 +154,11 @@ def resolve_alert(request, alert_id):
                     "resolved_by_name": request.user.username,
                 }
             )
-            # Add reaction to Discord message if we have a message_id
-            if alert.discord_message_id:
-                from django.conf import settings
-                import requests as req
-                emoji_map = {
-                    "theft": "✅",
-                    "recovered": "🔄",
-                    "false_alarm": "❌",
-                }
-                bot_url = getattr(settings, "SKYHOOKER_BOT_URL", None)
-                api_key = getattr(settings, "SKYHOOKER_INTERNAL_API_KEY", None)
-                if bot_url:
-                    headers = {"Content-Type": "application/json"}
-                    if api_key:
-                        headers["X-Internal-Key"] = api_key
-                    try:
-                        req.post(
-                            f"{bot_url}/react",
-                            headers=headers,
-                            json={"message_id": alert.discord_message_id, "emoji": emoji_map[status], "structure_id": str(alert.skyhook.structure_id)},
-                            timeout=5,
-                        )
-                    except Exception:
-                        pass
             messages.success(request, f"Alert resolved as {status}.")
             return redirect("skyhooker:unresolved_alerts")
 
     context = {"alert": alert}
     return render(request, "skyhooker/resolve_alert.html", context)
-
-
-from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
-import json
-
-
-@csrf_exempt
-def api_resolve_alert(request):
-    """Internal API endpoint — called by WR0NGy bot when a reaction is added."""
-    if request.method != "POST":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-    from django.conf import settings
-    api_key = getattr(settings, "SKYHOOKER_INTERNAL_API_KEY", None)
-    if api_key and request.headers.get("X-Internal-Key") != api_key:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    message_id = data.get("message_id")
-    status = data.get("status")
-    discord_user_id = str(data.get("discord_user_id", ""))
-    discord_username = data.get("discord_username", "")
-
-    if not message_id or not status:
-        return JsonResponse({"error": "message_id and status required"}, status=400)
-
-    from .models import AlertResolution
-    if status not in [AlertResolution.STATUS_THEFT, AlertResolution.STATUS_RECOVERED, AlertResolution.STATUS_FALSE_ALARM]:
-        return JsonResponse({"error": "Invalid status"}, status=400)
-
-    try:
-        alert = AlertLog.objects.get(discord_message_id=message_id)
-    except AlertLog.DoesNotExist:
-        return JsonResponse({"error": "Alert not found for message_id"}, status=404)
-
-    resolution, created = AlertResolution.objects.update_or_create(
-        alert=alert,
-        defaults={
-            "status": status,
-            "amount": alert.amount_delta or 0,
-            "resolved_by_discord_id": discord_user_id,
-            "resolved_by_name": discord_username,
-        }
-    )
-
-    return JsonResponse({
-        "ok": True,
-        "created": created,
-        "alert_id": alert.id,
-        "status": status,
-    })
 
 
 @login_required
@@ -256,7 +169,6 @@ def report(request):
     from .models import AlertResolution
     now = timezone.now()
 
-    # Get all reagent types that have been involved in theft alerts
     reagent_types = (
         AlertResolution.objects
         .exclude(alert__skyhook__reagent_type_name='')
@@ -266,13 +178,11 @@ def report(request):
     )
     reagent_types = list(reagent_types)
 
-    # Shades of red for lost, shades of green for recovered — one shade per reagent
     lost_shades = ['#dc3545', '#a71d2a', '#6f1119', '#e4606d', '#f1959b']
     recovered_shades = ['#198754', '#0d5c38', '#09361f', '#28a96a', '#5bc896']
     reagent_lost_colors = {r: lost_shades[i % len(lost_shades)] for i, r in enumerate(reagent_types)}
     reagent_recovered_colors = {r: recovered_shades[i % len(recovered_shades)] for i, r in enumerate(reagent_types)}
 
-    # This month stats per reagent
     month_data = {}
     for reagent in reagent_types:
         qs = AlertResolution.objects.filter(
@@ -292,7 +202,6 @@ def report(request):
     month_recovered = sum(d['recovered'] for d in month_data.values())
     month_false_alarms = sum(d['false_alarms'] for d in month_data.values())
 
-    # Unresolved count
     unresolved_count = (
         AlertLog.objects
         .filter(alert_type=AlertLog.ALERT_THEFT)
@@ -300,7 +209,6 @@ def report(request):
         .count()
     )
 
-    # Monthly history - last 6 months per reagent
     months = []
     for i in range(5, -1, -1):
         if now.month - i <= 0:
@@ -326,7 +234,6 @@ def report(request):
             }
         monthly_history.append(entry)
 
-    # Recent resolutions
     recent_resolutions = (
         AlertResolution.objects
         .select_related('alert', 'alert__skyhook')
@@ -334,7 +241,6 @@ def report(request):
     )
 
     import json
-    # Serialize chart data for JS
     pie_chart_data = {
         'labels': [],
         'data': [],
