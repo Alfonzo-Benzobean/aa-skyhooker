@@ -1,0 +1,47 @@
+{% extends "allianceauth/base-bs5.html" %}
+{% load i18n %}
+
+{% block title %}Resolve Alert{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 600px;">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>Resolve Theft Alert</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'skyhooker:unresolved_alerts' %}" class="btn btn-secondary">← Back</a>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-4">Skyhook</dt>
+                <dd class="col-sm-8">{{ alert.skyhook.solar_system_name }} — {{ alert.skyhook.planet_name }}</dd>
+                <dt class="col-sm-4">Reagent</dt>
+                <dd class="col-sm-8">{{ alert.skyhook.reagent_type_name }}</dd>
+                <dt class="col-sm-4">Time</dt>
+                <dd class="col-sm-8">{{ alert.fired_at|date:"Y-m-d H:i" }} UTC</dd>
+                <dt class="col-sm-4">Amount Dropped</dt>
+                <dd class="col-sm-8">{% if alert.amount_delta %}{{ alert.amount_delta|floatformat:0 }} units{% else %}—{% endif %}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="d-grid gap-2">
+            <button type="submit" name="status" value="theft" class="btn btn-danger btn-lg">
+                ✅ Confirmed Theft — {{ alert.amount_delta|default:0 }} units lost
+            </button>
+            <button type="submit" name="status" value="recovered" class="btn btn-success btn-lg">
+                🔄 Recovered — {{ alert.amount_delta|default:0 }} units recovered
+            </button>
+            <button type="submit" name="status" value="false_alarm" class="btn btn-secondary btn-lg">
+                ❌ False Alarm — ignore
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

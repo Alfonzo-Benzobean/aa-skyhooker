@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "aa-skyhooker"
+version = "1.0.0"
+description = "Alliance Auth plugin for monitoring EVE Online skyhook structures"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Alfonzo-Benzobean" }
+]
+keywords = ["allianceauth", "eveonline", "skyhook", "structure monitoring"]
+classifiers = [
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "allianceauth>=5.0.0",
+    "django-eveuniverse",
+    "requests",
+    "pytz",
+]
+
+[project.urls]
+Homepage = "https://github.com/Alfonzo-Benzobean/aa-skyhooker"
+Repository = "https://github.com/Alfonzo-Benzobean/aa-skyhooker"
+"Bug Tracker" = "https://github.com/Alfonzo-Benzobean/aa-skyhooker/issues"
+
+[tool.setuptools.packages.find]
+include = ["skyhooker*"]
+
+[tool.setuptools.package-data]
+skyhooker = [
+    "templates/skyhooker/*.html",
+    "static/skyhooker/**/*",
+    "locale/*/LC_MESSAGES/*",
+]

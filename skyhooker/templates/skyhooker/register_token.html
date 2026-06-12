@@ -1,0 +1,66 @@
+{% extends 'allianceauth/base-bs5.html' %}
+{% load i18n %}
+
+{% block page_title %}Skyhooker — Register Director Token{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 600px;">
+
+  <div class="mb-3">
+    <a href="{% url 'skyhooker:dashboard' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+    </a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <i class="fas fa-key me-2"></i>Register Director Token
+    </div>
+    <div class="card-body">
+
+      <div class="alert alert-success">
+        <i class="fas fa-check-circle me-1"></i>
+        Successfully authenticated as <strong>{{ token.character_name }}</strong>
+        with scope <code>esi-structures.read_corporation.v1</code>.
+      </div>
+
+      <p>Select which corporation this token should be used for:</p>
+
+      {% if corps %}
+      <div class="list-group">
+        {% for corp in corps %}
+        <a href="{% url 'skyhooker:register_token' %}?corp_id={{ corp.corporation_id }}&token={{ token.pk }}"
+           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <strong>{{ corp.corporation_name }}</strong>
+            <div class="text-muted small">ID: {{ corp.corporation_id }}</div>
+            {% if corp.token_character_id %}
+            <div class="text-muted small">
+              Current token: {{ corp.token_character_name|default:corp.token_character_id }}
+            </div>
+            {% endif %}
+          </div>
+          <span class="badge bg-primary">Select</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="alert alert-warning">
+        No corporations are configured yet. Please add a corporation in
+        <a href="/admin/skyhooker/skyhookcorporation/add/">Django Admin</a> first.
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-body text-muted small">
+      <i class="fas fa-info-circle me-1"></i>
+      The character you authenticated with must have the <strong>Director</strong>
+      role in the selected corporation for ESI to return skyhook data.
+    </div>
+  </div>
+
+</div>
+{% endblock %}

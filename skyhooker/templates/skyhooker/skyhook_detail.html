@@ -1,0 +1,156 @@
+{% extends 'allianceauth/base-bs5.html' %}
+{% load i18n %}
+
+{% block page_title %}{{ skyhook.solar_system_name }} — {{ skyhook.planet_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+  <div class="mb-3">
+    <a href="{% url 'skyhooker:dashboard' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+    </a>
+  </div>
+
+  <h3>
+    <i class="fas fa-satellite me-2"></i>
+    {{ skyhook.solar_system_name }} — {{ skyhook.planet_name }}
+  </h3>
+  <p class="text-muted">Structure ID: {{ skyhook.structure_id }} &bull; Corp: {{ skyhook.corporation.corporation_name }}</p>
+
+  {# ── CURRENT STATUS ── #}
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="text-muted small">State</div>
+          <div class="fs-5 fw-bold">
+            <span class="badge
+              {% if skyhook.current_state == 'ShieldVulnerable' %}bg-warning text-dark
+              {% elif 'Reinforced' in skyhook.current_state %}bg-danger
+              {% else %}bg-success{% endif %} fs-6">
+              {{ skyhook.current_state }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="text-muted small">Reagent</div>
+          <div class="fs-5 fw-bold">{{ skyhook.reagent_type_name|default:"Unknown" }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center {% if skyhook.is_vulnerable_now %}border-danger{% endif %}">
+        <div class="card-body">
+          <div class="text-muted small">Vulnerability Window</div>
+          {% if skyhook.vuln_start %}
+          <div class="small">
+            <strong>Opens:</strong> {{ skyhook.vuln_start|date:"Y-m-d H:i" }} UTC<br>
+            <strong>Closes:</strong> {{ skyhook.vuln_end|date:"Y-m-d H:i" }} UTC
+          </div>
+          {% if skyhook.is_vulnerable_now %}
+          <span class="badge bg-danger mt-1">OPEN NOW</span>
+          {% endif %}
+          {% else %}
+          <div class="text-muted">No window scheduled</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="text-muted small">Last Polled</div>
+          <div class="fs-5">{{ skyhook.last_polled|date:"Y-m-d H:i" }} UTC</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── SNAPSHOT HISTORY ── #}
+  <div class="card mb-4">
+    <div class="card-header">
+      <i class="fas fa-history me-1"></i> Snapshot History (last {{ snapshots|length }})
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Time (UTC)</th>
+            <th>State</th>
+            <th>Secured Stock</th>
+            <th>Δ Secured</th>
+            <th>Unsecured Stock</th>
+            <th>Δ Unsecured</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for snap in snapshots %}
+          <tr
+            {% if snap.unsecured_delta != None and snap.unsecured_delta < -100 %}
+            class="table-danger"
+            {% endif %}
+          >
+            <td>{{ snap.polled_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ snap.state }}</td>
+            <td>{{ snap.secured_stock|default:"0" }}</td>
+            <td>
+              {% if snap.secured_delta != None %}
+                <span class="{% if snap.secured_delta < 0 %}text-warning{% elif snap.secured_delta > 0 %}text-success{% endif %}">
+                  {% if snap.secured_delta > 0 %}+{% endif %}{{ snap.secured_delta }}
+                </span>
+              {% else %}—{% endif %}
+            </td>
+            <td>{{ snap.unsecured_stock|default:"0" }}</td>
+            <td>
+              {% if snap.unsecured_delta != None %}
+                <span class="{% if snap.unsecured_delta < -100 %}text-danger fw-bold{% elif snap.unsecured_delta < 0 %}text-warning{% elif snap.unsecured_delta > 0 %}text-success{% endif %}">
+                  {% if snap.unsecured_delta > 0 %}+{% endif %}{{ snap.unsecured_delta }}
+                  {% if snap.unsecured_delta < -100 %} ⚠️{% endif %}
+                </span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-muted text-center">No snapshots yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── ALERTS ── #}
+  <div class="card mb-4">
+    <div class="card-header">
+      <i class="fas fa-bell me-1"></i> Alert History
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="table-dark">
+          <tr><th>Time</th><th>Type</th><th>Message Preview</th></tr>
+        </thead>
+        <tbody>
+          {% for alert in alerts %}
+          <tr>
+            <td>{{ alert.fired_at|date:"Y-m-d H:i" }} UTC</td>
+            <td>
+              <span class="badge {% if alert.alert_type == 'theft' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                {{ alert.get_alert_type_display }}
+              </span>
+            </td>
+            <td><small class="text-muted">{{ alert.message|truncatechars:120 }}</small></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" class="text-muted text-center">No alerts for this skyhook.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

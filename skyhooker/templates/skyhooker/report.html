@@ -1,0 +1,187 @@
+{% extends "allianceauth/base-bs5.html" %}
+{% load i18n %}
+
+{% block title %}Skyhooker — Theft Report{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <!-- Nav -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2><i class="fas fa-satellite me-2"></i>Skyhooker</h2>
+  </div>
+  <ul class="nav nav-pills mb-4">
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'skyhooker:dashboard' %}">🛰️ Dashboard</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link active" href="{% url 'skyhooker:report' %}">📊 Theft Report</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'skyhooker:unresolved_alerts' %}">⚠️ Unresolved Alerts</a>
+    </li>
+  </ul>
+
+  <!-- Summary cards -->
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card border-danger">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Lost This Month</h6>
+          <h3 class="text-danger">{{ month_lost|floatformat:0 }}</h3>
+          <small>units</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-success">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Recovered This Month</h6>
+          <h3 class="text-success">{{ month_recovered|floatformat:0 }}</h3>
+          <small>units</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-secondary">
+        <div class="card-body text-center">
+          <h6 class="text-muted">False Alarms This Month</h6>
+          <h3 class="text-secondary">{{ month_false_alarms }}</h3>
+          <small>alerts</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-warning">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Unresolved</h6>
+          <h3 class="text-warning">{{ unresolved_count }}</h3>
+          <small>alerts pending</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <!-- Pie chart -->
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header">This Month — Lost vs Recovered by Reagent</div>
+        <div class="card-body d-flex align-items-center justify-content-center">
+          {% if month_lost == 0 and month_recovered == 0 %}
+          <p class="text-muted">No resolved theft data this month.</p>
+          {% else %}
+          <canvas id="pieChart" style="max-height:300px;"></canvas>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Stacked bar chart -->
+    <div class="col-md-8">
+      <div class="card h-100">
+        <div class="card-header">Monthly History by Reagent (Stacked)</div>
+        <div class="card-body">
+          <canvas id="historyChart" style="max-height:300px;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent resolutions table -->
+  <div class="card">
+    <div class="card-header">Recent Resolutions</div>
+    <div class="card-body p-0">
+      {% if recent_resolutions %}
+      <table class="table table-sm table-striped mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Date</th>
+            <th>System</th>
+            <th>Reagent</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Resolved By</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recent_resolutions %}
+          <tr>
+            <td>{{ r.alert.fired_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ r.alert.skyhook.solar_system_name }}</td>
+            <td>{{ r.alert.skyhook.reagent_type_name }}</td>
+            <td>{{ r.amount|floatformat:0 }} units</td>
+            <td>
+              {% if r.status == 'theft' %}
+              <span class="badge bg-danger">Confirmed Theft</span>
+              {% elif r.status == 'recovered' %}
+              <span class="badge bg-success">Recovered</span>
+              {% else %}
+              <span class="badge bg-secondary">False Alarm</span>
+              {% endif %}
+            </td>
+            <td>{{ r.resolved_by_name }}</td>
+            <td><a href="{% url 'skyhooker:resolve_alert' r.alert.id %}" class="btn btn-sm btn-primary">✏️ Edit</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="p-3 text-muted">No resolutions yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+const pieData = {{ pie_chart_json|safe }};
+const barLabels = {{ bar_labels_json|safe }};
+const barDatasets = {{ bar_datasets_json|safe }};
+
+// Pie chart
+if (pieData.data.length > 0) {
+  const pieCtx = document.getElementById('pieChart').getContext('2d');
+  new Chart(pieCtx, {
+    type: 'pie',
+    data: {
+      labels: pieData.labels,
+      datasets: [{
+        data: pieData.data,
+        backgroundColor: pieData.colors,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// Stacked bar chart
+const histCtx = document.getElementById('historyChart').getContext('2d');
+new Chart(histCtx, {
+  type: 'bar',
+  data: {
+    labels: barLabels,
+    datasets: barDatasets,
+  },
+  options: {
+    responsive: true,
+    scales: {
+      x: { stacked: true },
+      y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Units' } }
+    },
+    plugins: {
+      legend: { position: 'top', labels: { font: { size: 11 } } }
+    }
+  }
+});
+</script>
+{% endblock %}

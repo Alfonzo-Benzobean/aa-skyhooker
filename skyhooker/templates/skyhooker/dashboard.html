@@ -1,0 +1,260 @@
+{% extends 'allianceauth/base-bs5.html' %}
+{% load i18n %}
+
+{% block page_title %}Skyhooker Dashboard{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/dataTables.bootstrap5.min.css">
+<style>
+  #table-upcoming th, #table-upcoming td,
+  #table-all-skyhooks th, #table-all-skyhooks td {
+    text-align: center;
+    vertical-align: middle;
+  }
+  #table-upcoming td:first-child, #table-upcoming th:first-child,
+  #table-all-skyhooks td:first-child, #table-all-skyhooks th:first-child {
+    text-align: left;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2><i class="fas fa-satellite me-2"></i>Skyhooker</h2>
+    <div class="text-muted small">Last rendered: {{ now|date:"Y-m-d H:i" }} UTC</div>
+  </div>
+  <ul class="nav nav-pills mb-4">
+    <li class="nav-item">
+      <a class="nav-link active" href="{% url 'skyhooker:dashboard' %}">🛰️ Dashboard</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'skyhooker:report' %}">📊 Theft Report</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'skyhooker:unresolved_alerts' %}">⚠️ Unresolved Alerts</a>
+    </li>
+  </ul>
+
+  {% if vulnerable_now %}
+  <div class="card border-danger mb-4">
+    <div class="card-header bg-danger text-white">
+      <i class="fas fa-exclamation-triangle me-1"></i>
+      Currently Vulnerable ({{ vulnerable_now|length }})
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover table-sm mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>System</th><th>Planet</th><th>Corp</th><th>Reagent</th>
+            <th>Secured</th><th class="text-danger">Unsecured (at risk)</th>
+            <th>Window Closes</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in vulnerable_now %}
+          <tr class="table-danger">
+            <td>{{ s.solar_system_name }}</td>
+            <td>{{ s.planet_name }}</td>
+            <td>{{ s.corporation.corporation_name }}</td>
+            <td>{{ s.reagent_type_name }}</td>
+            <td>{{ s.latest_snap.secured_stock|default:"—" }}</td>
+            <td><strong>{{ s.latest_snap.unsecured_stock|default:"—" }}</strong></td>
+            <td><span class="local-time" data-utc="{{ s.vuln_end|date:'Y-m-d H:i' }}" title="{{ s.vuln_end|date:'Y-m-d H:i' }} UTC">{{ s.vuln_end|date:"Y-m-d H:i" }} UTC</span></td>
+            <td><a href="{% url 'skyhooker:skyhook_detail' s.structure_id %}" class="btn btn-sm btn-outline-light">Detail</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if upcoming_vuln %}
+  <div class="card border-warning mb-4">
+    <div class="card-header bg-warning text-dark">
+      <i class="fas fa-clock me-1"></i>
+      Upcoming Vulnerability Windows ({{ upcoming_vuln|length }})
+    </div>
+    <div class="card-body p-0">
+      <table id="table-upcoming" class="table table-hover table-sm mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>System</th><th>Planet</th><th>Corp</th><th>Reagent</th>
+            <th>Secured</th><th>Unsecured</th>
+            <th>Window Opens</th><th>Window Closes</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in upcoming_vuln %}
+          <tr class="table-warning">
+            <td>{{ s.solar_system_name }}</td>
+            <td>{{ s.planet_name }}</td>
+            <td>{{ s.corporation.corporation_name }}</td>
+            <td>{{ s.reagent_type_name }}</td>
+            <td>{{ s.latest_snap.secured_stock|default:"—" }}</td>
+            <td>{{ s.latest_snap.unsecured_stock|default:"—" }}</td>
+            <td><span class="local-time" data-utc="{{ s.vuln_start|date:'Y-m-d H:i' }}" title="{{ s.vuln_start|date:'Y-m-d H:i' }} UTC">{{ s.vuln_start|date:"Y-m-d H:i" }} UTC</span></td>
+            <td><span class="local-time" data-utc="{{ s.vuln_end|date:'Y-m-d H:i' }}" title="{{ s.vuln_end|date:'Y-m-d H:i' }} UTC">{{ s.vuln_end|date:"Y-m-d H:i" }} UTC</span></td>
+            <td><a href="{% url 'skyhooker:skyhook_detail' s.structure_id %}" class="btn btn-sm btn-outline-dark">Detail</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-header">
+      <i class="fas fa-list me-1"></i>
+      All Skyhooks ({{ normal_skyhooks|length }})
+    </div>
+    <div class="card-body p-0">
+      {% if normal_skyhooks %}
+      <table id="table-all-skyhooks" class="table table-hover table-sm mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>System</th><th>Planet</th><th>Corp</th><th>Reagent</th>
+            <th>State</th><th>Secured</th><th>Unsecured</th>
+            <th>Last Polled</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in normal_skyhooks %}
+          <tr>
+            <td>{{ s.solar_system_name }}</td>
+            <td>{{ s.planet_name }}</td>
+            <td>{{ s.corporation.corporation_name }}</td>
+            <td>{{ s.reagent_type_name }}</td>
+            <td>
+              <span class="badge {% if s.current_state == 'ShieldVulnerable' %}bg-warning text-dark{% elif 'Reinforced' in s.current_state %}bg-danger{% else %}bg-success{% endif %}">
+                {{ s.current_state }}
+              </span>
+            </td>
+            <td>{{ s.latest_snap.secured_stock|default:"—" }}</td>
+            <td>{{ s.latest_snap.unsecured_stock|default:"—" }}</td>
+            <td><span class="local-time" data-utc="{{ s.last_polled|date:'Y-m-d H:i' }}" title="{{ s.last_polled|date:'Y-m-d H:i' }} UTC">{{ s.last_polled|date:"H:i" }} UTC</span></td>
+            <td><a href="{% url 'skyhooker:skyhook_detail' s.structure_id %}" class="btn btn-sm btn-outline-secondary">Detail</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="p-3 text-muted">No skyhooks being tracked yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">
+      <i class="fas fa-bell me-1"></i> Recent Alerts
+    </div>
+    <div class="card-body p-0">
+      {% if recent_alerts %}
+      <table class="table table-sm mb-0">
+        <thead class="table-dark">
+          <tr><th>Time</th><th>Type</th><th>Skyhook</th></tr>
+        </thead>
+        <tbody>
+          {% for alert in recent_alerts %}
+          <tr>
+            <td><span class="local-time" data-utc="{{ alert.fired_at|date:'Y-m-d H:i' }}" title="{{ alert.fired_at|date:'Y-m-d H:i' }} UTC">{{ alert.fired_at|date:"Y-m-d H:i" }} UTC</span></td>
+            <td>
+              <span class="badge {% if alert.alert_type == 'theft' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                {{ alert.get_alert_type_display }}
+              </span>
+            </td>
+            <td>
+              <a href="{% url 'skyhooker:skyhook_detail' alert.skyhook.structure_id %}">
+                {{ alert.skyhook.solar_system_name }} — {{ alert.skyhook.planet_name }}
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="p-3 text-muted">No alerts yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-key me-1"></i> Corporation Token Status</span>
+      {% if perms.skyhooker.add_skyhookcorporation %}
+      <a href="{% url 'skyhooker:register_token' %}" class="btn btn-sm btn-success">
+        <i class="fas fa-plus me-1"></i> Register Director Token
+      </a>
+      {% endif %}
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Corporation</th><th>Token Character</th>
+            <th>Token Status</th><th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for corp in corps %}
+          <tr>
+            <td>{{ corp.corporation_name }}</td>
+            <td>{{ corp.token_character_name|default:"Not set" }}</td>
+            <td>
+              {% if corp.has_token %}
+              <span class="badge bg-success">Valid</span>
+              {% else %}
+              <span class="badge bg-danger">Missing / Invalid</span>
+              {% if perms.skyhooker.add_skyhookcorporation %}
+              <a href="{% url 'skyhooker:register_token' %}" class="btn btn-outline-warning ms-2" style="font-size:0.75rem;padding:1px 6px;">Fix</a>
+              {% endif %}
+              {% endif %}
+            </td>
+            <td><span class="local-time" data-utc="{{ corp.last_updated|date:'Y-m-d H:i' }}" title="{{ corp.last_updated|date:'Y-m-d H:i' }} UTC">{{ corp.last_updated|date:"Y-m-d H:i"|default:"Never" }} UTC</span></td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="4" class="text-muted text-center p-3">
+              No corporations configured.
+              <a href="/admin/skyhooker/skyhookcorporation/add/">Add one in Django Admin.</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_javascript %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/dataTables.bootstrap5.min.js"></script>
+<script>
+$(document).ready(function() {
+    document.querySelectorAll('.local-time').forEach(function(el) {
+        var utcStr = el.getAttribute('data-utc');
+        if (!utcStr) return;
+        var utcDate = new Date(utcStr.replace(' ', 'T') + ':00Z');
+        if (isNaN(utcDate)) return;
+        var local = utcDate.toLocaleString(undefined, {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+        });
+        el.textContent = local;
+    });
+    $('#table-upcoming').DataTable({
+        paging: false, searching: false, info: false,
+        order: [[6, 'asc']],
+    });
+    $('#table-all-skyhooks').DataTable({
+        paging: true, pageLength: 25, searching: true, info: true,
+        order: [[0, 'asc']],
+    });
+});
+</script>
+{% endblock %}
