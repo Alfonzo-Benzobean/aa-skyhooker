@@ -97,10 +97,28 @@ def register_token(request, token):
     ESI token registration view.
     Uses django-esi's @token_required decorator to handle the SSO flow.
     """
+    from .esi_client import fetch_character_corp_id
+
     corp_id = request.GET.get("corp_id")
 
     if corp_id:
-        corp = get_object_or_404(SkyhookCorporation, corporation_id=corp_id)
+        try:
+            corp_id_int = int(corp_id)
+        except (TypeError, ValueError):
+            messages.error(request, "Invalid corporation.")
+            return redirect("skyhooker:dashboard")
+
+        corp = get_object_or_404(SkyhookCorporation, corporation_id=corp_id_int)
+
+        char_corp_id = fetch_character_corp_id(token.character_id)
+        if char_corp_id != corp.corporation_id:
+            messages.error(
+                request,
+                f"{token.character_name} is not a member of {corp.corporation_name}. "
+                "Please authenticate with a Director character from that corporation."
+            )
+            return redirect("skyhooker:dashboard")
+
         corp.token_character_id = token.character_id
         corp.token_character_name = token.character_name
         corp.save(update_fields=["token_character_id", "token_character_name"])
@@ -165,38 +183,54 @@ def resolve_alert(request, alert_id):
 @permission_required("skyhooker.view_skyhook", raise_exception=True)
 def report(request):
     """Theft report with charts."""
-    from django.db.models import Sum
+    import json
+    from datetime import datetime as dt, timezone as py_tz
+    from django.db.models import BigIntegerField, Case, Count, Sum, When
     from .models import AlertResolution
     now = timezone.now()
 
-    reagent_types = (
+    reagent_types = list(
         AlertResolution.objects
         .exclude(alert__skyhook__reagent_type_name='')
         .values_list('alert__skyhook__reagent_type_name', flat=True)
         .distinct()
         .order_by('alert__skyhook__reagent_type_name')
     )
-    reagent_types = list(reagent_types)
 
     lost_shades = ['#dc3545', '#a71d2a', '#6f1119', '#e4606d', '#f1959b']
     recovered_shades = ['#198754', '#0d5c38', '#09361f', '#28a96a', '#5bc896']
     reagent_lost_colors = {r: lost_shades[i % len(lost_shades)] for i, r in enumerate(reagent_types)}
     reagent_recovered_colors = {r: recovered_shades[i % len(recovered_shades)] for i, r in enumerate(reagent_types)}
 
-    month_data = {}
-    for reagent in reagent_types:
-        qs = AlertResolution.objects.filter(
-            alert__fired_at__year=now.year,
-            alert__fired_at__month=now.month,
-            alert__skyhook__reagent_type_name=reagent,
+    # Current-month aggregation — one query instead of 3 per reagent
+    month_rows = (
+        AlertResolution.objects
+        .filter(alert__fired_at__year=now.year, alert__fired_at__month=now.month)
+        .exclude(alert__skyhook__reagent_type_name='')
+        .values('alert__skyhook__reagent_type_name')
+        .annotate(
+            lost=Sum(Case(When(status='theft', then='amount'), default=0, output_field=BigIntegerField())),
+            recovered=Sum(Case(When(status='recovered', then='amount'), default=0, output_field=BigIntegerField())),
+            false_alarms=Count(Case(When(status='false_alarm', then=1))),
         )
-        month_data[reagent] = {
-            'lost': qs.filter(status='theft').aggregate(t=Sum('amount'))['t'] or 0,
-            'recovered': qs.filter(status='recovered').aggregate(t=Sum('amount'))['t'] or 0,
-            'false_alarms': qs.filter(status='false_alarm').count(),
-            'lost_color': reagent_lost_colors[reagent],
-            'recovered_color': reagent_recovered_colors[reagent],
+    )
+    month_data = {
+        row['alert__skyhook__reagent_type_name']: {
+            'lost': row['lost'] or 0,
+            'recovered': row['recovered'] or 0,
+            'false_alarms': row['false_alarms'],
+            'lost_color': reagent_lost_colors.get(row['alert__skyhook__reagent_type_name'], '#dc3545'),
+            'recovered_color': reagent_recovered_colors.get(row['alert__skyhook__reagent_type_name'], '#198754'),
         }
+        for row in month_rows
+    }
+    for r in reagent_types:
+        if r not in month_data:
+            month_data[r] = {
+                'lost': 0, 'recovered': 0, 'false_alarms': 0,
+                'lost_color': reagent_lost_colors[r],
+                'recovered_color': reagent_recovered_colors[r],
+            }
 
     month_lost = sum(d['lost'] for d in month_data.values())
     month_recovered = sum(d['recovered'] for d in month_data.values())
@@ -219,18 +253,31 @@ def report(request):
             year = now.year
         months.append({'label': f"{year}-{month_num:02d}", 'year': year, 'month': month_num})
 
+    # Historical aggregation — one query for all 6 months instead of 2 per reagent per month
+    window_start = dt(months[0]['year'], months[0]['month'], 1, tzinfo=py_tz.utc)
+    history_rows = (
+        AlertResolution.objects
+        .filter(alert__fired_at__gte=window_start)
+        .exclude(alert__skyhook__reagent_type_name='')
+        .values('alert__fired_at__year', 'alert__fired_at__month', 'alert__skyhook__reagent_type_name')
+        .annotate(
+            lost=Sum(Case(When(status='theft', then='amount'), default=0, output_field=BigIntegerField())),
+            recovered=Sum(Case(When(status='recovered', then='amount'), default=0, output_field=BigIntegerField())),
+        )
+    )
+    history_index = {
+        (row['alert__fired_at__year'], row['alert__fired_at__month'], row['alert__skyhook__reagent_type_name']): row
+        for row in history_rows
+    }
+
     monthly_history = []
     for m in months:
         entry = {'label': m['label'], 'reagents': {}}
         for reagent in reagent_types:
-            qs = AlertResolution.objects.filter(
-                alert__fired_at__year=m['year'],
-                alert__fired_at__month=m['month'],
-                alert__skyhook__reagent_type_name=reagent,
-            )
+            row = history_index.get((m['year'], m['month'], reagent), {})
             entry['reagents'][reagent] = {
-                'lost': qs.filter(status='theft').aggregate(t=Sum('amount'))['t'] or 0,
-                'recovered': qs.filter(status='recovered').aggregate(t=Sum('amount'))['t'] or 0,
+                'lost': row.get('lost') or 0,
+                'recovered': row.get('recovered') or 0,
             }
         monthly_history.append(entry)
 
@@ -240,7 +287,6 @@ def report(request):
         .order_by('-resolved_at')[:20]
     )
 
-    import json
     pie_chart_data = {
         'labels': [],
         'data': [],

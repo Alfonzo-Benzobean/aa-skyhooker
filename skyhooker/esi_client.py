@@ -22,24 +22,39 @@ SKYHOOK_SCOPE = "esi-structures.read_corporation.v1"
 # type_id 81143 = Magmatic Gas (confirmed from API response)
 
 
-def get_corp_token(corporation_id: int, character_id: int = None):
+def get_corp_token(character_id: int) -> "Token":
     """
-    Retrieve a valid ESI token for the given corporation.
-    Optionally filter by character_id.
+    Retrieve a valid ESI token for the stored Director character.
     Raises Token.DoesNotExist if no valid token is found.
     """
-    tokens = Token.objects.filter(
-        character_id=character_id,
-    ).require_scopes(SKYHOOK_SCOPE) if character_id else \
-        Token.objects.require_scopes(SKYHOOK_SCOPE)
-
-    token = tokens.first()
+    token = (
+        Token.objects
+        .filter(character_id=character_id)
+        .require_scopes(SKYHOOK_SCOPE)
+        .first()
+    )
     if not token:
         raise Token.DoesNotExist(
-            f"No token with scope {SKYHOOK_SCOPE} found"
-            + (f" for character {character_id}" if character_id else "")
+            f"No token with scope {SKYHOOK_SCOPE} found for character {character_id}"
         )
     return token
+
+
+def fetch_character_corp_id(character_id: int) -> int | None:
+    """
+    Fetch the current corporation_id for a character via the public ESI endpoint.
+    Used to verify a token character belongs to the target corporation.
+    """
+    url = f"{ESI_BASE}/characters/{character_id}/"
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        return resp.json().get("corporation_id")
+    except Exception as e:
+        logger.warning(
+            "Could not fetch corporation for character %s: %s", character_id, e
+        )
+        return None
 
 
 def _auth_header(token: Token) -> dict:

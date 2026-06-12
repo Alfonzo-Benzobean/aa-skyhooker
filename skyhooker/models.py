@@ -176,7 +176,6 @@ class AlertLog(models.Model):
         ordering = ["-fired_at"]
         permissions = [
             ("view_alertlog", "Can view and resolve theft alerts"),
-            ("add_skyhookcorporation", "Can register corporations and ESI tokens"),
         ]
 
     def __str__(self):

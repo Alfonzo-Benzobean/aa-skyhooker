@@ -6,7 +6,6 @@ Task schedule (added to CELERYBEAT_SCHEDULE in local.py):
   - skyhooker_check_vuln_alerts     every 15 minutes
 """
 from allianceauth.services.hooks import get_extension_logger
-import time
 from datetime import timedelta
 
 from celery import shared_task
@@ -39,11 +38,11 @@ def poll_all_skyhooks(self):
 
     for corp in corps:
         logger.info(
-            "Skyhooker: Polling skyhooks for %s (%s)",
+            "Skyhooker: Queuing skyhook polls for %s (%s)",
             corp.corporation_name, corp.corporation_id
         )
         try:
-            token = get_corp_token(corp.corporation_id, corp.token_character_id)
+            token = get_corp_token(corp.token_character_id)
         except Exception as e:
             logger.error(
                 "Skyhooker: No valid ESI token for corp %s: %s",
@@ -65,18 +64,40 @@ def poll_all_skyhooks(self):
             len(skyhook_ids), corp.corporation_name
         )
 
-        for skyhook_id in skyhook_ids:
-            try:
-                _poll_single_skyhook(corp, skyhook_id, token)
-            except Exception as e:
-                logger.error(
-                    "Skyhooker: Error polling skyhook %s: %s",
-                    skyhook_id, e
-                )
-            time.sleep(ESI_THROTTLE_SECONDS)
+        # Dispatch per-skyhook tasks with staggered countdowns to throttle ESI calls
+        # without blocking this worker thread.
+        for i, skyhook_id in enumerate(skyhook_ids):
+            _poll_skyhook_task.apply_async(
+                args=[corp.pk, skyhook_id],
+                countdown=i * ESI_THROTTLE_SECONDS,
+            )
 
         corp.last_updated = timezone.now()
         corp.save(update_fields=["last_updated"])
+
+
+@shared_task(name="skyhooker_poll_single_skyhook")
+def _poll_skyhook_task(corp_pk: int, skyhook_id: int):
+    try:
+        corp = SkyhookCorporation.objects.get(pk=corp_pk)
+    except SkyhookCorporation.DoesNotExist:
+        logger.error(
+            "Skyhooker: Corporation pk=%s not found when polling skyhook %s",
+            corp_pk, skyhook_id
+        )
+        return
+    try:
+        token = get_corp_token(corp.token_character_id)
+    except Exception as e:
+        logger.error(
+            "Skyhooker: No valid ESI token for corp %s: %s",
+            corp.corporation_id, e
+        )
+        return
+    try:
+        _poll_single_skyhook(corp, skyhook_id, token)
+    except Exception as e:
+        logger.error("Skyhooker: Error polling skyhook %s: %s", skyhook_id, e)
 
 
 def _resolve_planet_names(skyhook):
@@ -201,6 +222,7 @@ def check_vulnerability_alerts():
         is_active=True,
         vuln_alert_sent=False,
         vuln_start__isnull=False,
+        vuln_end__isnull=False,
         vuln_start__gte=now,
         vuln_start__lte=alert_horizon,
     ).select_related("corporation")
@@ -220,7 +242,7 @@ def check_vulnerability_alerts():
 
         msg = (
             f"@here\n"
-        f"🔔 **Skyhook Vulnerability Window Approaching**\n"
+            f"🔔 **Skyhook Vulnerability Window Approaching**\n"
             f"**Skyhook:** {skyhook.solar_system_name} — {skyhook.planet_name}\n"
             f"**Corporation:** {skyhook.corporation.corporation_name}\n"
             f"**Reagent:** {skyhook.reagent_type_name}\n"
@@ -237,7 +259,7 @@ def check_vulnerability_alerts():
         )
         thread_name = f"{skyhook.solar_system_name} — {skyhook.planet_name}"
         result = send_discord_alert(msg, thread_name=thread_name, structure_id=skyhook.structure_id)
-        if result and result.get("message_id"):
+        if isinstance(result, dict) and result.get("message_id"):
             alert.discord_message_id = result["message_id"]
             alert.save(update_fields=["discord_message_id"])
         skyhook.vuln_alert_sent = True

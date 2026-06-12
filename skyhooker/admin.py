@@ -27,17 +27,9 @@ class SkyhookerConfigurationAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         # Redirect straight to the edit page if a config row exists
-        config = SkyhookerConfiguration.objects.first()
-        if config:
-            from django.http import HttpResponseRedirect
-            from django.urls import reverse
-            return HttpResponseRedirect(
-                reverse("admin:skyhooker_skyhookerconfiguration_change", args=[config.pk])
-            )
-        # No row yet — create one and redirect to it
-        config = SkyhookerConfiguration.objects.create()
         from django.http import HttpResponseRedirect
         from django.urls import reverse
+        config, _ = SkyhookerConfiguration.objects.get_or_create(pk=1)
         return HttpResponseRedirect(
             reverse("admin:skyhooker_skyhookerconfiguration_change", args=[config.pk])
         )
