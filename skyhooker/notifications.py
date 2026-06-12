@@ -1,24 +1,32 @@
 """
 Discord notifications for Skyhooker — via Discord webhook.
 
-Configure in local.py:
-    SKYHOOKER_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/..."
+Configure the webhook URL in Django Admin under Skyhooker > Configuration.
 """
 import requests
-from django.conf import settings
 from allianceauth.services.hooks import get_extension_logger
 
 logger = get_extension_logger(__name__)
 
 
+def _get_webhook_url() -> str | None:
+    """Read webhook URL from the database configuration."""
+    try:
+        from .models import SkyhookerConfiguration
+        config = SkyhookerConfiguration.objects.first()
+        return config.discord_webhook if config and config.discord_webhook else None
+    except Exception:
+        return None
+
+
 def send_discord_alert(message: str, **kwargs) -> bool:
     """
-    Send an alert to Discord via a configured webhook URL.
+    Send an alert to Discord via the configured webhook URL.
     Returns True on success, False if unconfigured or on error.
     """
-    webhook_url = getattr(settings, "SKYHOOKER_DISCORD_WEBHOOK", None)
+    webhook_url = _get_webhook_url()
     if not webhook_url:
-        logger.warning("Skyhooker: SKYHOOKER_DISCORD_WEBHOOK not configured — alert suppressed.")
+        logger.warning("Skyhooker: No Discord webhook configured — alert suppressed.")
         return False
 
     try:

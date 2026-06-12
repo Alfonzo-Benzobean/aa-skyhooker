@@ -1,8 +1,46 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import AlertLog, AlertResolution, Skyhook, SkyhookCorporation, SkyhookSnapshot
+from .models import (
+    AlertLog, AlertResolution, Skyhook, SkyhookCorporation,
+    SkyhookSnapshot, SkyhookerConfiguration,
+)
 from .tasks import poll_all_skyhooks
+
+
+@admin.register(SkyhookerConfiguration)
+class SkyhookerConfigurationAdmin(admin.ModelAdmin):
+    list_display = ["webhook_status"]
+
+    def webhook_status(self, obj):
+        if obj.discord_webhook:
+            return format_html('<span style="color:green">✔ Webhook configured</span>')
+        return format_html('<span style="color:red">✘ No webhook set</span>')
+    webhook_status.short_description = "Discord Webhook"
+
+    def has_add_permission(self, request):
+        # Only allow one configuration row
+        return not SkyhookerConfiguration.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        # Redirect straight to the edit page if a config row exists
+        config = SkyhookerConfiguration.objects.first()
+        if config:
+            from django.http import HttpResponseRedirect
+            from django.urls import reverse
+            return HttpResponseRedirect(
+                reverse("admin:skyhooker_skyhookerconfiguration_change", args=[config.pk])
+            )
+        # No row yet — create one and redirect to it
+        config = SkyhookerConfiguration.objects.create()
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        return HttpResponseRedirect(
+            reverse("admin:skyhooker_skyhookerconfiguration_change", args=[config.pk])
+        )
 
 
 @admin.register(SkyhookCorporation)
@@ -47,7 +85,7 @@ class SkyhookSnapshotAdmin(admin.ModelAdmin):
     ]
 
     def has_add_permission(self, request):
-        return False  # Snapshots are created by tasks only
+        return False
 
 
 @admin.register(AlertLog)
@@ -58,7 +96,6 @@ class AlertLogAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
-
 
 
 @admin.register(AlertResolution)

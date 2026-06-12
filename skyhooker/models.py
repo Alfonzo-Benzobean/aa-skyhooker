@@ -217,3 +217,21 @@ class AlertResolution(models.Model):
 
     def __str__(self):
         return f"{self.get_status_display()} — {self.alert}"
+
+
+class SkyhookerConfiguration(models.Model):
+    """
+    Singleton configuration model. Edit via Django Admin under Skyhooker > Configuration.
+    """
+    discord_webhook = models.URLField(
+        blank=True,
+        verbose_name="Discord Webhook URL",
+        help_text="Discord webhook URL for alert notifications. Leave blank to disable Discord alerts.",
+    )
+
+    class Meta:
+        verbose_name = "Configuration"
+        verbose_name_plural = "Configuration"
+
+    def __str__(self):
+        return "Skyhooker Configuration"
